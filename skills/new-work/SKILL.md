@@ -7,6 +7,8 @@ description: 워크스페이스에서 work(작업 폴더)를 만들고, 묶고, 
 
 직접 폴더나 워크트리를 만들거나 옮기지 말고 항상 아래 스크립트를 쓴다. 스크립트는 agent-harness 플러그인의 `bin/`에 있고 플러그인이 켜진 세션에서는 PATH에 있다. 워크스페이스 루트는 환경변수 `AGENT_WORKSPACE_ROOT`로 정한다(비어 있으면 스크립트가 멈춘다). 스크립트가 워크트리 연결, `AGENTS.md` 링크, Claude 세션 폴더(`/resume` 목록)를 함께 맞춘다.
 
+워크스페이스 구조(`repository/`·`work/`·`arxiv/`)가 없거나 `AGENT_WORKSPACE_ROOT`가 비어 있으면 [workspace 스킬](../workspace/SKILL.md)로 먼저 구조를 만든다.
+
 ## 규칙
 
 1. work = 폴더 + `task.md`. 레포 워크트리는 그 work에 자기 브랜치가 필요할 때만 둔다.
@@ -40,7 +42,7 @@ arxiv/2026-10/                  보관 (문서만, work/ 밖)
 
 1. 작업 요약 → slug 제안 (사용자 확정)
 2. 기존 work의 하위인지(`--in`), 하위 work를 담을 묶음인지(`--group`). 관련 묶음이 있으면 `--in`을 제안한다.
-3. 대상 레포와 레포별 새 브랜치명(`type/topic` 또는 `<티켓>-type/topic`, 예: `PROJ-123-feat/x`), 기준 브랜치. 레포가 필요 없으면 생략한다. 기준 브랜치를 모르면 `git -C repository/<레포> branch -r`로 확인해 제안하고, 최신 기준이 필요하면 먼저 `fetch origin`을 한다.
+3. 대상 레포와 레포별 새 브랜치명(`type/topic` 또는 `<티켓>-type/topic`, 예: `PROJ-123-feat/x`), 기준 브랜치. 레포가 필요 없으면 생략한다. 기준 브랜치를 모르면 `git -C repository/<레포> branch -r`로 확인해 제안하고, 최신 기준이 필요하면 먼저 `fetch origin`을 한다. 레포가 `repository/`에 없으면 [workspace 스킬](../workspace/SKILL.md) 2절(`add-repo`)로 먼저 들인다.
 
 ```
 new-work --dry-run [--group | --in <부모 work>] <slug> [<레포>:<새 브랜치>:<기준 브랜치> ...]

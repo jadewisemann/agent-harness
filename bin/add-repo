@@ -1,0 +1,85 @@
+#!/bin/bash
+# 워크스페이스에 레포를 들인다. 들인 레포는 바로 new-work 에서 <레포>:<새 브랜치>:<기준 브랜치> 로 쓸 수 있다.
+#   add-repo [--dry-run] [--name <이름>] <원격 URL>        원격을 repository/<이름> 으로 클론
+#   add-repo [--dry-run] [--name <이름>] --from <로컬 레포>  흩어진 로컬 레포를 repository/<이름> 으로 옮김
+#   add-repo [--dry-run] --new <이름> [--branch <기본 브랜치>] 새 로컬 레포(git init + 빈 첫 커밋)
+# 원격 저장소 만들기(gh repo create)는 하지 않는다. 사용자 확인 뒤 따로 한다.
+set -euo pipefail
+. "$(dirname "$0")/work-lib.sh"
+
+dry=0; name=""; mode=clone; src=""; branch=main
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --dry-run) dry=1; shift ;;
+    --name) name=${2:-}; shift 2 ;;
+    --from) mode=from; src=${2:-}; shift 2 ;;
+    --new) mode=new; name=${2:-}; shift 2 ;;
+    --branch) branch=${2:-}; shift 2 ;;
+    -*) die "모르는 옵션: $1" ;;
+    *) break ;;
+  esac
+done
+usage="사용법: add-repo [--dry-run] [--name <이름>] <원격 URL> | --from <로컬 레포> | --new <이름> [--branch <브랜치>]"
+[ -d "$REPO" ] || die "repository/ 가 없다: $REPO (먼저 workspace-init)"
+
+case "$mode" in
+  clone)
+    url=${1:-}; [ -n "$url" ] || die "$usage"
+    [ -n "$name" ] || { name=$(basename "${url%/}"); name=${name%.git}; } ;;
+  from)
+    [ -n "$src" ] || die "$usage"
+    src=$(cd "$src" 2>/dev/null && pwd -P) || die "폴더가 없다: $src"
+    [ -d "$src/.git" ] || { [ -f "$src/.git" ] && die "다른 레포의 워크트리는 들이지 않는다: $src"; die "git 레포가 아니다: $src"; }
+    [ "$(git -C "$src" rev-parse --show-toplevel)" = "$src" ] || die "레포 루트가 아니다: $src"
+    case "$src" in "$ROOT"/repository/*|"$W"/*|"$A"/*) die "이미 워크스페이스 안에 있다: $src" ;; esac
+    [ -n "$name" ] || name=$(basename "$src") ;;
+  new)
+    [ -n "$name" ] || die "$usage" ;;
+esac
+[[ "$name" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || die "레포 이름은 영숫자·.·_·- 만 쓴다: $name"
+dst="$REPO/$name"
+[ -e "$dst" ] && die "이미 있다: repository/$name"
+
+echo "레포: repository/$name"
+case "$mode" in
+  clone) echo "- 클론: $url" ;;
+  from)
+    echo "- 옮김: $src"
+    echo "    미커밋 $(git -C "$src" status --porcelain | wc -l | tr -d ' ')건, 연결된 워크트리 $(( $(git -C "$src" worktree list | wc -l) - 1 ))개(옮긴 뒤 worktree repair)"
+    [ -n "$(git -C "$src" remote)" ] || echo "    원격 없음" ;;
+  new) echo "- 새 레포: git init -b $branch + 빈 첫 커밋(new-work 의 기준 브랜치가 되도록). 원격은 만들지 않는다" ;;
+esac
+
+# --from: Claude 세션 폴더(옛 경로 기준)도 새 경로로 옮기고 옛 이름은 링크로 남긴다(/resume 유지).
+sessions=()
+if [ "$mode" = from ]; then
+  while read -r d; do
+    rel=${d#"$src"}
+    old="$CLAUDE_PROJECTS/$(claude_enc "$d")"; new="$CLAUDE_PROJECTS/$(claude_enc "$dst$rel")"
+    [ -d "$old" ] && [ ! -L "$old" ] && sessions+=("$old|$new")
+  done < <(find "$src" -maxdepth 2 \( -name node_modules -o -name .git \) -prune -o -type d -print)
+  for s in "${sessions[@]+"${sessions[@]}"}"; do echo "    세션: $(basename "${s%%|*}") → $(basename "${s##*|}")"; done
+fi
+[ "$dry" = 1 ] && { echo "(dry-run: 아무것도 하지 않았다)"; exit 0; }
+
+case "$mode" in
+  clone) git clone -q "$url" "$dst" || die "클론 실패: $url" ;;
+  from)
+    mv "$src" "$dst"
+    git -C "$dst" worktree repair >/dev/null 2>&1 || echo "    경고: worktree repair 실패" >&2
+    for s in "${sessions[@]+"${sessions[@]}"}"; do
+      old=${s%%|*}; new=${s##*|}
+      if [ -e "$new" ]; then echo "    경고: 세션 폴더가 이미 있어 옮기지 않음 $(basename "$new")" >&2; continue; fi
+      mv "$old" "$new" && ln -s "$new" "$old"
+    done ;;
+  new)
+    git init -q -b "$branch" "$dst"
+    git -C "$dst" commit -q --allow-empty -m "chore: 저장소 생성" || { rm -rf "$dst"; die "첫 커밋 실패(작성자 설정 확인). 만든 폴더는 지웠다"; } ;;
+esac
+
+# new-work 에 쓸 기준 브랜치 안내
+head=$(git -C "$dst" symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null || true)
+[ -n "$head" ] || head=$(git -C "$dst" branch --show-current)
+echo "완료: $dst"
+echo "기준 브랜치 후보: ${head:-없음}$(git -C "$dst" for-each-ref --format=' %(refname:short)' refs/remotes/origin/develop refs/remotes/origin/main 'refs/remotes/origin/deploy/*' | grep -v "^ ${head}\$" | tr -d '\n')"
+echo "예: new-work <slug> $name:feat/<topic>:${head:-<기준 브랜치>}"

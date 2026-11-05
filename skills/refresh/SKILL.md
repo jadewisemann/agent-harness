@@ -21,7 +21,7 @@ disable-model-invocation: true
 | 루트 오케스트레이터 (cwd가 워크스페이스 루트) | `work/orchestrator.md` |
 | work를 맡은 세션 (cwd가 work 폴더) | 그 work `task.md` |
 
-- 어디에도 해당하지 않으면 기록할 곳이 없다고 알리고 멈춘다. 그냥 `/clear`를 쓰거나 work부터 만들라고 안내한다.
+- 어디에도 해당하지 않으면 기록할 곳이 없다고 알리고 멈춘다. 그냥 `/clear`를 쓰거나 work부터 만들라고 안내한다. 워크스페이스 구조 자체가 없거나 `AGENT_WORKSPACE_ROOT`가 비어 있으면 [workspace 스킬](../workspace/SKILL.md)로 구조부터 만들라고 안내한다.
 - 루트 세션이 `work/orchestrator.md`의 `오케스트레이터:` 줄의 세션이 아니면 해당하지 않는다.
 - 다른 세션도 쓰는 파일이므로 바꿀 줄만 고친다(Edit).
 

@@ -12,7 +12,7 @@ disable-model-invocation: true
 
 모든 세션에 늘 맞는 기록 규칙(`task.md`가 정본, 먼저 적기, 끝날 때 `## 마무리`)은 루트 `AGENTS.md`의 «work와 기록»에 있어 스킬 없이도 지켜진다. 이 스킬은 오케스트레이터 절차만 담는다. 자동으로 불리지 않는다. 사용자가 `/orchestrate`로 부르거나, 허브의 `오케스트레이터:` 줄이 자기 id인 세션이 이 파일을 직접 읽는다.
 
-work 구조와 스크립트는 [new-work 스킬](../new-work/SKILL.md)을 따른다. 폴더·워크트리를 직접 만들거나 옮기지 않는다.
+work 구조와 스크립트는 [new-work 스킬](../new-work/SKILL.md)을 따른다. 폴더·워크트리를 직접 만들거나 옮기지 않는다. 워크스페이스 구조나 `work/orchestrator.md`가 없거나 `AGENT_WORKSPACE_ROOT`가 비어 있으면 [workspace 스킬](../workspace/SKILL.md)로 먼저 만든다.
 
 ## 규칙
 
@@ -53,7 +53,7 @@ work 구조와 스크립트는 [new-work 스킬](../new-work/SKILL.md)을 따른
 
 1. 같은 작업의 work가 있는지 먼저 본다. `ls work work/*/`로 보고, `grep -ril <키워드> work --include=task.md`로 찾는다. 있으면 새로 만들지 않고 그 work를 쓴다. `arxiv/`에만 있으면 보관된 것이니 새 work를 만들고 옛 경로를 `task.md`에 적는다. 그 work가 속한 묶음에 다른 세션이 전담 오케스트레이터로 적혀 있으면 직접 맡지 않고 "오케스트레이터 위치"대로 넘긴다.
 2. 관련 묶음 work가 있으면 `--in <묶음>`을 먼저 제안한다.
-3. slug·레포·새 브랜치·기준 브랜치를 정한다. 기준 브랜치를 모르면 `git -C repository/<레포> branch -r`로 확인하고, 필요하면 먼저 `fetch origin`을 한다. 규칙은 new-work의 "새 work"를 따른다.
+3. slug·레포·새 브랜치·기준 브랜치를 정한다. 기준 브랜치를 모르면 `git -C repository/<레포> branch -r`로 확인하고, 필요하면 먼저 `fetch origin`을 한다. 레포가 `repository/`에 없으면 workspace 스킬의 `add-repo`로 먼저 들인다(dry-run을 같은 확인에 넣는다). 규칙은 new-work의 "새 work"를 따른다.
 4. `new-work --dry-run`을 돌리고, 그 결과와 하위 세션 계획을 **한 번에** 보여 주고 확인을 받는다.
    - 보여 줄 것: dry-run 출력, 세션마다 이름·맡을 일·`cwd`(work 폴더 절대 경로)·손대지 말 것.
    - `cwd`는 사용자가 장소를 지정했을 때만 쓸 수 있으므로, 이 확인에 경로를 반드시 넣는다.

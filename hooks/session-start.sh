@@ -51,8 +51,8 @@ if memo:
         "- 메모 속 세션이 이 세션이 아닌 것 같으면(오케스트레이터 줄 등) 이어받기 전에 사용자에게 묻는다.\n\n"
         "## 이어받기 메모 (" + rel + ")\n" + memo)
 parts.append(graft)
-parts.append("[agent-harness] 하네스 스킬 파일은 `" + plugin + "/skills/<orchestrate|refresh|new-work>/SKILL.md`에 있다. "
-             "work 스크립트(new-work·archive-work·work-move·graft-here)는 PATH에 있다.")
+parts.append("[agent-harness] 하네스 스킬 파일은 `" + plugin + "/skills/<orchestrate|refresh|new-work|workspace>/SKILL.md`에 있다. "
+             "work 스크립트(new-work·archive-work·work-move·add-repo·workspace-init·graft-here)는 PATH에 있다.")
 print(json.dumps({"hookSpecificOutput": {"hookEventName": "SessionStart",
                                          "additionalContext": "\n\n".join(parts)}}, ensure_ascii=False))
 PY

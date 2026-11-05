@@ -143,7 +143,8 @@ work_branch_record() {
     git -C "$main" log --first-parent --no-merges --format='  - `%h` %s' $range | head -100
     [ "$n" -gt 100 ] && echo "  - … (100개까지만 적음)"
   fi
-  slug=$(git -C "$main" remote get-url origin 2>/dev/null | sed -E 's#^(git@github\.com:|https://github\.com/)##; s#\.git$##')
+  # origin 이 없는 레포(add-repo --new 등)도 멈추지 않게 실패를 빈 값으로 둔다
+  slug=$( { git -C "$main" remote get-url origin 2>/dev/null || true; } | sed -E 's#^(git@github\.com:|https://github\.com/)##; s#\.git$##')
   names=$br
   case "$up" in origin/*)
     u=${up#origin/}
