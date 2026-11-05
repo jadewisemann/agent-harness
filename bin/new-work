@@ -1,0 +1,91 @@
+#!/bin/bash
+# 새 work를 만든다. 사용법:
+#   new-work [--dry-run] [--group | --in <부모 work>] <slug> [<레포>:<새 브랜치>:<기준 브랜치> ...]
+# 예: new-work checkout-coupon web-app:PROJ-123-feat/checkout-coupon:origin/develop
+#     new-work --group checkout-revamp                  (하위 work를 담을 묶음)
+#     new-work --in checkout-revamp stg-feedback         (레포 없이 부모 워크트리에서 작업)
+# 이름 규칙: work는 MMDD-slug(시작 월일), 묶음(--group)만 slug. 시작일은 task.md에 적는다.
+set -euo pipefail
+. "$(dirname "$0")/work-lib.sh"
+
+dry=0; parent=$W; group=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --dry-run) dry=1; shift ;;
+    --group) group=1; shift ;;
+    --in) [ -n "${2:-}" ] || die "--in 뒤에 부모 work가 필요하다"; parent=$(work_abs "$2"); shift 2 ;;
+    *) break ;;
+  esac
+done
+slug=${1:-}; shift || true
+specs=("$@")
+
+[ -n "$slug" ] || die "사용법: new-work [--dry-run] [--group | --in <부모 work>] <slug> [<레포>:<새 브랜치>:<기준 브랜치> ...]"
+[[ "$slug" =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]] || die "slug는 영어 소문자 kebab-case여야 한다: $slug"
+if [ "$parent" != "$W" ]; then
+  case "$parent" in "$W"/*) ;; *) die "부모는 work/ 아래에 있어야 한다: $parent" ;; esac
+  [ "$(work_of "$parent")" = "$parent" ] || die "부모가 work 폴더가 아니다(레포 안 등): $parent"
+fi
+name=$slug
+[ "$group" = 0 ] && name="$(date +%m%d)-$slug"
+dir="$parent/$name"
+[ -e "$dir" ] && die "이미 있다: $dir"
+for a in "$A"/*/"${dir#"$W"/}"; do [ -e "$a" ] && echo "참고: 같은 이름이 보관돼 있다: ${a#"$ROOT"/}" >&2; done
+
+# --- 검증 (아무것도 만들기 전에) ---
+repos=(); branches=(); bases=()
+for s in "${specs[@]+"${specs[@]}"}"; do
+  IFS=: read -r r b base <<<"$s"
+  [ -n "${r:-}" ] && [ -n "${b:-}" ] && [ -n "${base:-}" ] || die "형식은 <레포>:<새 브랜치>:<기준 브랜치> 이다: $s"
+  [ -e "$REPO/$r/.git" ] || die "레포가 없다: $REPO/$r"
+  git -C "$REPO/$r" show-ref --verify --quiet "refs/heads/$b" && die "브랜치가 이미 있다: $r $b"
+  git -C "$REPO/$r" rev-parse --verify --quiet "$base^{commit}" >/dev/null || die "기준 브랜치를 찾을 수 없다(fetch 필요?): $r $base"
+  [[ "$b" =~ ^([A-Z][A-Z0-9]*-[0-9]+-)?[a-z]+/[A-Za-z0-9._-]+$ ]] || echo "경고: 브랜치명이 type/topic 또는 <티켓>-type/topic(예: PROJ-123-feat/x) 규칙이 아니다: $b" >&2
+  repos+=("$r"); branches+=("$b"); bases+=("$base")
+done
+
+rel=${dir#"$W"/}
+echo "work: work/$rel"
+[ ${#repos[@]} -eq 0 ] && echo "- 레포 없음 (부모 워크트리에서 작업)"
+for i in "${!repos[@]}"; do
+  r=${repos[$i]}
+  echo "- ${r}: 브랜치 ${branches[$i]} (기준 ${bases[$i]})"
+  [ -f "$REPO/$r/.env" ] && echo "    .env 복사 (원본과 분리된 스냅샷)" || echo "    .env 없음"
+  [ -d "$REPO/$r/node_modules" ] && echo "    node_modules -> repository/$r/node_modules 링크" || echo "    node_modules 없음: 필요하면 이 폴더에서 설치"
+done
+[ "$dry" = 1 ] && { echo "(dry-run: 아무것도 만들지 않았다)"; exit 0; }
+
+# --- 생성 ---
+mkdir -p "$dir"
+work_link_agents "$dir"
+cat > "$dir/task.md" <<EOF
+# ${slug}
+
+작업 폴더: work/${rel}
+시작: $(date +%Y-%m-%d)
+
+## 목표
+
+## 범위
+
+## 하지 않을 일
+
+## 완료 조건
+
+## 결정 사항
+
+## 다음 행동
+EOF
+
+for i in "${!repos[@]}"; do
+  r=${repos[$i]}; b=${branches[$i]}; base=${bases[$i]}
+  wt="$dir/$r"
+  git -C "$REPO/$r" worktree add -b "$b" "$wt" "$base" >/dev/null 2>&1 || die "워크트리 생성 실패: $r $b (기준 $base)"
+  if [ -f "$REPO/$r/.env" ]; then
+    cp "$REPO/$r/.env" "$wt/.env" && chmod 600 "$wt/.env"
+    git -C "$wt" check-ignore -q .env || echo "주의: $r 의 .env 가 .gitignore 에 없다. 커밋하지 않도록 조심." >&2
+  fi
+  [ -d "$REPO/$r/node_modules" ] && ln -sfn "$REPO/$r/node_modules" "$wt/node_modules"
+  echo "생성: $wt ($b)"
+done
+echo "완료: $dir"

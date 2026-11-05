@@ -1,0 +1,14 @@
+{
+  "name": "agent-harness",
+  "owner": {
+    "name": "agent-harness maintainers"
+  },
+  "description": "Marketplace for the agent-harness plugin.",
+  "plugins": [
+    {
+      "name": "agent-harness",
+      "source": "./",
+      "description": "Work folders with git worktrees, orchestration via sub-sessions, /refresh handoff, and a SessionStart hook."
+    }
+  ]
+}

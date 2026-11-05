@@ -1,0 +1,45 @@
+#!/bin/bash
+# 끝난 work(머지·배포 완료 또는 중단)를 문서만 남겨 <워크스페이스>/arxiv/<YYYY-MM>/<work/ 아래 경로> 로 옮긴다.
+#   archive-work [--dry-run] [--month YYYY-MM] <work>
+# 예: work/checkout-revamp/1015-api → arxiv/2026-10/checkout-revamp/1015-api
+# 워크트리는 지우고 기록(브랜치·HEAD·미push·미커밋)을 task.md에 남긴다. 미커밋 변경은 .patch로 남는다.
+# 브랜치는 지우지 않는다. 같은 달에 같은 묶음의 하위 work가 먼저 보관돼 있으면 그 폴더에 합친다.
+set -euo pipefail
+. "$(dirname "$0")/work-lib.sh"
+
+dry=0; month=$(date +%Y-%m)
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --dry-run) dry=1; shift ;;
+    --month) month=${2:-}; shift 2 ;;
+    *) break ;;
+  esac
+done
+[ $# -eq 1 ] || die "사용법: archive-work [--dry-run] [--month YYYY-MM] <work>"
+[[ "$month" =~ ^20[0-9]{2}-[01][0-9]$ ]] || die "--month 는 YYYY-MM: $month"
+src=$(work_abs "$1")
+case "$src" in "$W"/*) ;; *) die "work/ 아래의 work가 아니다: $src" ;; esac
+[ "$(work_of "$src")" = "$src" ] || die "work 폴더가 아니다: $src"
+
+echo "워크트리 정리:"
+work_strip "$src" "$dry"
+
+dst="$A/$month/${src#"$W"/}"
+if [ ! -e "$dst" ]; then
+  work_move "$src" "$dst" "$dry"
+else
+  # 먼저 보관된 하위 work가 있는 묶음: 남은 항목을 하나씩 옮겨 합친다.
+  echo "합치기: ${src#"$ROOT"/} → ${dst#"$ROOT"/} (이미 있음)"
+  shopt -s dotglob nullglob
+  for e in "$src"/*; do
+    [ -e "$dst/$(basename "$e")" ] && die "합칠 수 없다(같은 이름이 있음): ${dst#"$ROOT"/}/$(basename "$e")"
+  done
+  for e in "$src"/*; do work_move "$e" "$dst/$(basename "$e")" "$dry" | sed 's/^/  /'; done
+  if [ "$dry" = 0 ]; then
+    rmdir "$src"
+    o="$CLAUDE_PROJECTS/$(claude_enc "$src")"; n="$CLAUDE_PROJECTS/$(claude_enc "$dst")"
+    [ -d "$o" ] && [ ! -L "$o" ] && [ ! -e "$n" ] && mv "$o" "$n" && ln -s "$n" "$o"
+    work_link_agents "$dst"
+  fi
+fi
+[ "$dry" = 1 ] && echo "(dry-run: 아무것도 옮기지 않았다)" || echo "완료"

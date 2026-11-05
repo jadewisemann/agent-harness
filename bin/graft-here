@@ -1,0 +1,39 @@
+#!/bin/bash
+# 사용: graft-here <레포 안의 경로> <graft 명령> [인자...]
+# 레포 루트를 찾아 그래프를 레포 밖(<부모>/.graft-data/<repo>)에 두고 graft를 실행한다.
+# 그래프가 없거나 낡았으면 먼저 빌드한다. 레포 안에는 파일을 만들지 않는다.
+set -euo pipefail
+[ "$#" -ge 2 ] || { echo "사용: graft-here <레포 경로> <graft 명령> [인자...]" >&2; exit 2; }
+target=$1; shift
+root=$(git -C "$target" rev-parse --show-toplevel 2>/dev/null) || { echo "git 레포가 아닙니다: $target" >&2; exit 2; }
+data="$(dirname "$root")/.graft-data/$(basename "$root")"
+export DO_NOT_TRACK=1 GRAFT_NO_GITIGNORE=1 GRAFT_NO_IGNORE=1
+export GRAFT_BIN=${GRAFT_BIN:-$(command -v graft)}
+
+clean_repo() {
+  # init/build가 남긴 graft 줄만 있는 .gitignore 변경과 빈 graft/ 폴더를 되돌린다.
+  if ! git -C "$root" diff --quiet -- .gitignore 2>/dev/null; then
+    if diff -q <(git -C "$root" show HEAD:.gitignore | grep -v '^$') <(grep -v -e '^$' -e graft "$root/.gitignore") >/dev/null; then
+      git -C "$root" checkout -q -- .gitignore
+    fi
+  fi
+  rmdir "$root/graft/.cache" "$root/graft" 2>/dev/null || true
+}
+
+build() {
+  echo "[graft-here] 그래프 빌드: $data" >&2
+  mkdir -p "$(dirname "$data")"
+  (cd "$root" && "$GRAFT_BIN" --dir "$data" build >&2) || { clean_repo; echo "[graft-here] 빌드 실패" >&2; return 1; }
+  clean_repo
+}
+
+if [ ! -d "$data" ] || [ -z "$(ls -A "$data" 2>/dev/null)" ]; then
+  build
+elif ! (cd "$root" && "$GRAFT_BIN" --dir "$data" check >/dev/null 2>&1); then
+  build
+fi
+cd "$root"
+out=$("$GRAFT_BIN" --dir "$data" "$@") && rc=0 || rc=$?
+clean_repo
+printf '%s\n' "$out"
+exit $rc
