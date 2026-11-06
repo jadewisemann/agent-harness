@@ -40,12 +40,25 @@ esac
 dst="$REPO/$name"
 [ -e "$dst" ] && die "이미 있다: repository/$name"
 
+# --from: 연결 워크트리 경로를 옮기기 전에 적어 둔다. 레포 안쪽(예: .claude/worktrees/*)에 있던 것은
+# 옮긴 뒤의 경로로 바꾼다. git 은 인자 없는 repair 로는 옛 경로의 워크트리를 찾지 못하므로 경로를 넘긴다.
+wts=(); inner=0; inner_old=()
+if [ "$mode" = from ]; then
+  while IFS= read -r l; do
+    case "$l" in worktree\ *) ;; *) continue ;; esac
+    p=${l#worktree }
+    [ -d "$p" ] && p=$(cd "$p" && pwd -P)  # /tmp → /private/tmp 처럼 src 와 같은 표기로
+    [ "$p" = "$src" ] && continue
+    case "$p" in "$src"/*) wts+=("$dst${p#"$src"}"); inner_old+=("$p"); inner=$((inner + 1)) ;; *) wts+=("$p") ;; esac
+  done < <(git -C "$src" worktree list --porcelain)
+fi
+
 echo "레포: repository/$name"
 case "$mode" in
   clone) echo "- 클론: $url" ;;
   from)
     echo "- 옮김: $src"
-    echo "    미커밋 $(git -C "$src" status --porcelain | wc -l | tr -d ' ')건, 연결된 워크트리 $(( $(git -C "$src" worktree list | wc -l) - 1 ))개(옮긴 뒤 worktree repair)"
+    echo "    미커밋 $(git -C "$src" status --porcelain | wc -l | tr -d ' ')건, 연결된 워크트리 ${#wts[@]}개(레포 안쪽 ${inner}개. 옮긴 뒤 새 경로로 worktree repair)"
     [ -n "$(git -C "$src" remote)" ] || echo "    원격 없음" ;;
   new) echo "- 새 레포: git init -b $branch + 빈 첫 커밋(new-work 의 기준 브랜치가 되도록). 원격은 만들지 않는다" ;;
 esac
@@ -57,7 +70,8 @@ if [ "$mode" = from ]; then
     rel=${d#"$src"}
     old="$CLAUDE_PROJECTS/$(claude_enc "$d")"; new="$CLAUDE_PROJECTS/$(claude_enc "$dst$rel")"
     [ -d "$old" ] && [ ! -L "$old" ] && sessions+=("$old|$new")
-  done < <(find "$src" -maxdepth 2 \( -name node_modules -o -name .git \) -prune -o -type d -print)
+  done < <({ find "$src" -maxdepth 2 \( -name node_modules -o -name .git \) -prune -o -type d -print
+             printf '%s\n' "${inner_old[@]+"${inner_old[@]}"}"; } | sort -u)
   for s in "${sessions[@]+"${sessions[@]}"}"; do echo "    세션: $(basename "${s%%|*}") → $(basename "${s##*|}")"; done
 fi
 [ "$dry" = 1 ] && { echo "(dry-run: 아무것도 하지 않았다)"; exit 0; }
@@ -66,7 +80,10 @@ case "$mode" in
   clone) git clone -q "$url" "$dst" || die "클론 실패: $url" ;;
   from)
     mv "$src" "$dst"
-    git -C "$dst" worktree repair >/dev/null 2>&1 || echo "    경고: worktree repair 실패" >&2
+    live=()
+    for w in "${wts[@]+"${wts[@]}"}"; do [ -e "$w" ] && live+=("$w"); done
+    git -C "$dst" worktree repair "${live[@]+"${live[@]}"}" >/dev/null 2>&1 || echo "    경고: worktree repair 실패" >&2
+    grep -q 'prunable' <<<"$(git -C "$dst" worktree list)" && echo "    경고: prunable 워크트리가 남았다(git -C $dst worktree list 로 확인)" >&2
     for s in "${sessions[@]+"${sessions[@]}"}"; do
       old=${s%%|*}; new=${s##*|}
       if [ -e "$new" ]; then echo "    경고: 세션 폴더가 이미 있어 옮기지 않음 $(basename "$new")" >&2; continue; fi

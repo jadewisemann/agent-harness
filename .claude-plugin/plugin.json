@@ -1,6 +1,6 @@
 {
   "name": "agent-harness",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Workspace harness for agent sessions: per-task work folders with git worktrees, an orchestration procedure for delegating to sub-sessions, /refresh handoff notes, and a SessionStart hook.",
   "keywords": [
     "workflow",
