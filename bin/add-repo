@@ -67,11 +67,15 @@ esac
 sessions=()
 if [ "$mode" = from ]; then
   while read -r d; do
+    [ -n "$d" ] || continue
     rel=${d#"$src"}
     old="$CLAUDE_PROJECTS/$(claude_enc "$d")"; new="$CLAUDE_PROJECTS/$(claude_enc "$dst$rel")"
+    # old 는 $CLAUDE_PROJECTS 바로 아래의 이름 있는 폴더여야 한다(빈 d 가 projects 자체를 가리키지 않게)
+    case "${old#"$CLAUDE_PROJECTS"/}" in ""|*/*) continue ;; esac
     [ -d "$old" ] && [ ! -L "$old" ] && sessions+=("$old|$new")
   done < <({ find "$src" -maxdepth 2 \( -name node_modules -o -name .git \) -prune -o -type d -print
-             printf '%s\n' "${inner_old[@]+"${inner_old[@]}"}"; } | sort -u)
+             # 빈 배열에서 printf 는 빈 줄 하나를 내보내므로 비어 있지 않을 때만 쓴다
+             [ ${#inner_old[@]} -eq 0 ] || printf '%s\n' "${inner_old[@]}"; } | sort -u)
   for s in "${sessions[@]+"${sessions[@]}"}"; do echo "    세션: $(basename "${s%%|*}") → $(basename "${s##*|}")"; done
 fi
 [ "$dry" = 1 ] && { echo "(dry-run: 아무것도 하지 않았다)"; exit 0; }
